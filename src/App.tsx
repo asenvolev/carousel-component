@@ -10,7 +10,7 @@ interface Image {
   download_url: string;
 }
 
-// const IMAGES_COUNT = 3;
+// const IMAGES_COUNT = 10;
 // const IMAGES_COUNT = 100;
 // const IMAGES_COUNT = 1000;
 // const IMAGES_COUNT = 10000;

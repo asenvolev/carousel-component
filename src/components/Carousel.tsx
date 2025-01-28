@@ -1,47 +1,43 @@
-import { useRef, useState, useCallback, useMemo, FC, TouchEvent, WheelEvent, KeyboardEvent, useLayoutEffect } from "react";
+import { useRef, FC, TouchEvent, WheelEvent, KeyboardEvent } from "react";
 import styled from "styled-components";
 import { preloadImages } from "../utils/helpers";
-import CarouselImage from './CarouselImage';
+import CarouselImage, { CarouselImageRef } from './CarouselImage';
 
 interface Props {
     imageUrls: string[];
     slidesToShow: number;
     marginInPercents?: number;
+    transitionInSeconds?: number;
 }
 
-const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0}) => {
+const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, transitionInSeconds=0.3}) => {
     const carouselRef = useRef<HTMLDivElement | null>(null);
     const startXRef = useRef<number>(0);
     const touchStartIndexRef = useRef<number>(0);
     const currentIndexRef = useRef<number>(slidesToShow);
-    const [imageIndexes, setImageIndexes] = useState<number[]>(Array.from({ length: slidesToShow*3 }, (_, index) => -slidesToShow + index));
+    const imageIndexesRef = useRef<number[]>(Array.from({ length: slidesToShow*3 }, (_, index) => -slidesToShow + index));
+    const imageRefs = useRef<(CarouselImageRef | null)[]>([]);
 
-    const widthInPercents = useMemo(()=> 100 / slidesToShow, [slidesToShow]);
-    const transition = `transform 0.3s ease`;
-
-    useLayoutEffect(()=>{
-        if (carouselRef.current) {
-            carouselRef.current.style.transition = "none";
-            carouselRef.current.style.transform = `translate3d(-${currentIndexRef.current * widthInPercents}%, 0, 0)`;
-        }
-    },[imageIndexes, widthInPercents]);
+    const widthInPercents = 100 / slidesToShow;
+    const transition = `transform ${transitionInSeconds}s ease`;
+    const imageUrlsLength = imageUrls.length;
 
     const preloadChunkOfImages = (index: number[]) => {
-        const urls = index.map((val) => imageUrls[(val % imageUrls.length + imageUrls.length) % imageUrls.length]);
+        const urls = index.map((val) => imageUrls[(val % imageUrlsLength + imageUrlsLength) % imageUrlsLength]);
         preloadImages(urls);
     };
 
     const addIndexesInTheBeginningRemoveFromTheEnd = () => {
-        const indexesToAdd = Array.from({ length: slidesToShow }, (_, i) => imageIndexes[0] - (i + 1));
+        const indexesToAdd = Array.from({ length: slidesToShow }, (_, i) => imageIndexesRef.current[0] - (i + 1));
         preloadChunkOfImages(indexesToAdd);
-        const indexesWithRemovedEnd = imageIndexes.slice(0, -slidesToShow);
+        const indexesWithRemovedEnd = imageIndexesRef.current.slice(0, -slidesToShow);
         return [...indexesToAdd.reverse(), ...indexesWithRemovedEnd]
     };
 
     const addIndexesInTheEndRemoveFromTheBeginning = () => {
-        const indexesToAdd = Array.from({ length: slidesToShow }, (_, i) => imageIndexes[imageIndexes.length - 1] + (i + 1));
+        const indexesToAdd = Array.from({ length: slidesToShow }, (_, i) => imageIndexesRef.current[imageIndexesRef.current.length - 1] + (i + 1));
         preloadChunkOfImages(indexesToAdd);
-        const indexesWithRemovedStart = imageIndexes.slice(slidesToShow);
+        const indexesWithRemovedStart = imageIndexesRef.current.slice(slidesToShow);
         return [...indexesWithRemovedStart, ...indexesToAdd]
     };
 
@@ -50,12 +46,22 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0}) => 
                     ? addIndexesInTheBeginningRemoveFromTheEnd()
                     : addIndexesInTheEndRemoveFromTheBeginning();
         
-        setImageIndexes(newImageIndexes);
+        imageIndexesRef.current = newImageIndexes;
 
-        currentIndexRef.current = currentIndexRef.current + (currentIndexRef.current < slidesToShow ? slidesToShow : -slidesToShow);
+        currentIndexRef.current += (currentIndexRef.current < slidesToShow ? slidesToShow : -slidesToShow);
+
+        imageRefs.current.forEach((ref, index) => {
+            ref?.updateSrc(imageUrls[(newImageIndexes[index] % imageUrlsLength + imageUrlsLength) % imageUrlsLength]);
+        });
+
+        if (carouselRef.current) {
+            carouselRef.current.style.transition = "none";
+            carouselRef.current.style.transform = `translate3d(-${currentIndexRef.current * widthInPercents}%, 0, 0)`;
+        }
+        
     };
 
-    const moveToNextSlide = useCallback((delta:number) => {
+    const moveToNextSlide = (delta:number) => {
         if (currentIndexRef.current % 1 !== 0) {
             currentIndexRef.current = delta < 0 ? Math.ceil(currentIndexRef.current) : Math.floor(currentIndexRef.current);
         } else {
@@ -69,25 +75,28 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0}) => 
         }
 
         startXRef.current = 0;
-    },[widthInPercents, transition]);
+    };
 
-    const onWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    const onWheel = (event: WheelEvent<HTMLDivElement>) => {
         moveToNextSlide(event.deltaY);
-    },[moveToNextSlide]);
+    };
 
-    const onTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    //throttle the onWheel event if somehow it stucks
+    // const throttledOnWheel = throttle(onWheel, transitionInSeconds * 1000);
+
+    const onTouchStart = (event: TouchEvent<HTMLDivElement>) => {
         startXRef.current = event.touches[0].pageX;
         touchStartIndexRef.current = currentIndexRef.current;
-    },[]);
+    };
 
-    const onTouchMove = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    const onTouchMove = (event: TouchEvent<HTMLDivElement>) => {
         if (!carouselRef.current) return;
         const x = event.touches[0].pageX;
         const walk = x - startXRef.current;
         const percentageWalk = (walk / carouselRef.current.clientWidth);
         currentIndexRef.current = touchStartIndexRef.current - percentageWalk * slidesToShow;
         carouselRef.current.style.transform = `translate3d(-${(currentIndexRef.current * widthInPercents)}%, 0, 0)`;
-    }, [slidesToShow, widthInPercents]);
+    };
 
     const onTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
         const endX = event.changedTouches[0].pageX;
@@ -104,24 +113,25 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0}) => 
     };
 
     const onTransitionEnd = () => {
-        const shouldShiftIndexes = currentIndexRef.current < slidesToShow || currentIndexRef.current >=  imageIndexes.length - slidesToShow;
+        const shouldShiftIndexes = currentIndexRef.current < slidesToShow || currentIndexRef.current >=  imageIndexesRef.current.length - slidesToShow;
         if (!startXRef.current && shouldShiftIndexes) {
             addAndRemoveIndexes();
         }
     };
 
-    const slides = useMemo(() => imageIndexes.map((val) => {
-        const imgIndex = (val % imageUrls.length + imageUrls.length) % imageUrls.length;
+    const slides = imageIndexesRef.current.map((val,index) => {
+        const imgIndex = (val % imageUrlsLength + imageUrlsLength) % imageUrlsLength;
         const imageUrl = imageUrls[imgIndex];
         return (
         <CarouselImage 
             id={imgIndex} 
-            key={imgIndex} 
-            imageUrl={imageUrl} 
+            ref={(el: CarouselImageRef | null) => (imageRefs.current[index] = el)}
+            key={index} 
+            initialSrc={imageUrl} 
             widthInPercents={widthInPercents} 
             marginInPercents={marginInPercents}
         />);
-    }), [imageIndexes, imageUrls, widthInPercents, marginInPercents]);
+    });
 
 
     return (

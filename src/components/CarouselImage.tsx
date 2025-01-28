@@ -1,14 +1,19 @@
-import { FC, memo, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import styled, { keyframes } from "styled-components";
 
 interface Props {
     id:number;
-    imageUrl:string;
+    initialSrc:string;
     widthInPercents: number;
     marginInPercents: number;
 }
 
-const CarouselImage : FC<Props> = ({ id, imageUrl, widthInPercents, marginInPercents }) => {
+export interface CarouselImageRef {
+  updateSrc: (newSrc: string) => void; // Exposed method to update the src
+}
+
+const CarouselImage = forwardRef<CarouselImageRef, Props>(
+  ({ id, initialSrc, widthInPercents, marginInPercents }, ref) => {
 
     const [isLoaded, setIsLoaded] = useState(false);
     const imageRef = useRef<HTMLImageElement | null>(null);
@@ -16,6 +21,15 @@ const CarouselImage : FC<Props> = ({ id, imageUrl, widthInPercents, marginInPerc
     const hideLoader = () => {
       setIsLoaded(true);
     };
+
+    useImperativeHandle(ref, () => ({
+      updateSrc: (newSrc: string) => {
+        if (imageRef.current) {
+          imageRef.current.setAttribute("src", newSrc);
+          setIsLoaded(false);
+        }
+      },
+    }));
 
     const onLoaded = () => {
       if (imageRef.current) {
@@ -25,7 +39,7 @@ const CarouselImage : FC<Props> = ({ id, imageUrl, widthInPercents, marginInPerc
     }
 
     const handleError = () => {
-      imageRef.current?.setAttribute("src", `${imageUrl}?retry=${id}`);
+      imageRef.current?.setAttribute("src", `${initialSrc}?retry=${id}`);
     };
 
     return (
@@ -36,7 +50,7 @@ const CarouselImage : FC<Props> = ({ id, imageUrl, widthInPercents, marginInPerc
             { !isLoaded && <Loader /> }
             <Image
                 ref={imageRef}
-                src={imageUrl}
+                src={initialSrc}
                 alt={`carousel-image-${id}`}
                 onLoad={onLoaded}
                 onError={handleError}
@@ -46,9 +60,9 @@ const CarouselImage : FC<Props> = ({ id, imageUrl, widthInPercents, marginInPerc
 
         </Wrapper>
     );
-};
+});
 
-export default memo(CarouselImage);
+export default CarouselImage;
 
 const Wrapper = styled.div.attrs<{  $widthInPercents: number; $marginInPercents: number}>(
   ({  $widthInPercents, $marginInPercents }) => ({

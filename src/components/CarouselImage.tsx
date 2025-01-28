@@ -6,14 +6,15 @@ interface Props {
     initialSrc:string;
     widthInPercents: number;
     marginInPercents: number;
+    onLoad?: (img:HTMLImageElement) => void;
 }
 
 export interface CarouselImageRef {
-  updateSrc: (newSrc: string) => void; // Exposed method to update the src
+  updateSrc: (newSrc: string, isCached:boolean) => void; // Exposed method to update the src
 }
 
 const CarouselImage = forwardRef<CarouselImageRef, Props>(
-  ({ id, initialSrc, widthInPercents, marginInPercents }, ref) => {
+  ({ id, initialSrc, widthInPercents, marginInPercents, onLoad }, ref) => {
 
     const [isLoaded, setIsLoaded] = useState(false);
     const imageRef = useRef<HTMLImageElement | null>(null);
@@ -23,16 +24,17 @@ const CarouselImage = forwardRef<CarouselImageRef, Props>(
     };
 
     useImperativeHandle(ref, () => ({
-      updateSrc: (newSrc: string) => {
+      updateSrc: (newSrc: string, isCached:boolean) => {
         if (imageRef.current) {
-          imageRef.current.setAttribute("src", newSrc);
-          setIsLoaded(false);
+            setIsLoaded(isCached);
+            imageRef.current.src = newSrc;
         }
-      },
+    },
     }));
 
     const onLoaded = () => {
       if (imageRef.current) {
+        onLoad?.(imageRef.current);
         imageRef.current.style.transition = "opacity 0.2s ease;";
         imageRef.current.style.opacity = "1";
       }

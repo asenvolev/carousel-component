@@ -46,6 +46,7 @@ const App : FC = () => {
         imageUrls={imageUrls} 
         slidesToShow={5} 
         marginInPercents={2}
+        transitionInSeconds={0.3}
       />
     </Wrapper>
   );

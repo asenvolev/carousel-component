@@ -1,6 +1,6 @@
-import { useRef, FC, TouchEvent, WheelEvent, KeyboardEvent } from "react";
+import { useRef, FC, TouchEvent, WheelEvent, KeyboardEvent, useMemo, useCallback } from "react";
 import styled from "styled-components";
-import { preloadImages } from "../utils/helpers";
+import { throttle } from "../utils/helpers";
 import CarouselImage, { CarouselImageRef } from './CarouselImage';
 
 interface Props {
@@ -8,23 +8,56 @@ interface Props {
     slidesToShow: number;
     marginInPercents?: number;
     transitionInSeconds?: number;
+    cacheLimit?: number;
 }
 
-const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, transitionInSeconds=0.3}) => {
+export interface CacheEntry {
+    image: HTMLImageElement;
+    isLoaded: boolean;
+}
+
+const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, transitionInSeconds=0.3, cacheLimit=slidesToShow*6}) => {
     const carouselRef = useRef<HTMLDivElement | null>(null);
     const startXRef = useRef<number>(0);
     const touchStartIndexRef = useRef<number>(0);
     const currentIndexRef = useRef<number>(slidesToShow);
-    const imageIndexesRef = useRef<number[]>(Array.from({ length: slidesToShow*3 }, (_, index) => -slidesToShow + index));
+    const imageIndexesRef = useRef<number[]>(Array.from({ length: slidesToShow*3 }, (_, index) => -slidesToShow + index)); // 3 times the slidesToShow cause we need buffer for touch events
     const imageRefs = useRef<(CarouselImageRef | null)[]>([]);
+    const imageCache = useRef<Map<string, CacheEntry>>(new Map());
 
     const widthInPercents = 100 / slidesToShow;
     const transition = `transform ${transitionInSeconds}s ease`;
     const imageUrlsLength = imageUrls.length;
 
-    const preloadChunkOfImages = (index: number[]) => {
-        const urls = index.map((val) => imageUrls[(val % imageUrlsLength + imageUrlsLength) % imageUrlsLength]);
-        preloadImages(urls);
+    const imageOnLoad = (img: HTMLImageElement) => {
+        imageCache.current.set(img.src, { image: img, isLoaded: true });
+        if (imageCache.current.size > cacheLimit) {
+            const firstKey = imageCache.current.keys().next().value;
+            if (firstKey !== undefined) {
+                imageCache.current.delete(firstKey);
+            }
+        }
+    };
+
+    const preloadImage = (url: string): Promise<void> => {
+        return new Promise((resolve) => {
+            if (imageCache.current.has(url)) {
+                resolve();
+                return;
+            }
+            const img = new Image();
+            img.onload = () => {
+                imageOnLoad(img);
+                resolve();
+            };
+            img.src = url;
+        });
+    };
+
+    const preloadChunkOfImages = (indexes: number[]) => {
+        indexes.map(
+            (val) => preloadImage(imageUrls[(val % imageUrlsLength + imageUrlsLength) % imageUrlsLength])
+        );
     };
 
     const addIndexesInTheBeginningRemoveFromTheEnd = () => {
@@ -51,7 +84,8 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
         currentIndexRef.current += (currentIndexRef.current < slidesToShow ? slidesToShow : -slidesToShow);
 
         imageRefs.current.forEach((ref, index) => {
-            ref?.updateSrc(imageUrls[(newImageIndexes[index] % imageUrlsLength + imageUrlsLength) % imageUrlsLength]);
+            const newSource = imageUrls[(newImageIndexes[index] % imageUrlsLength + imageUrlsLength) % imageUrlsLength]
+            ref?.updateSrc(newSource, imageCache.current.get(newSource)?.isLoaded || false);
         });
 
         if (carouselRef.current) {
@@ -81,8 +115,7 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
         moveToNextSlide(event.deltaY);
     };
 
-    //throttle the onWheel event if somehow it stucks
-    // const throttledOnWheel = throttle(onWheel, transitionInSeconds * 1000);
+    const throttledOnWheel = throttle(onWheel, transitionInSeconds * 1000);
 
     const onTouchStart = (event: TouchEvent<HTMLDivElement>) => {
         startXRef.current = event.touches[0].pageX;
@@ -130,6 +163,7 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
             initialSrc={imageUrl} 
             widthInPercents={widthInPercents} 
             marginInPercents={marginInPercents}
+            onLoad={imageOnLoad}
         />);
     });
 
@@ -140,7 +174,7 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
                 data-testid="carousel-container"
                 ref={carouselRef}
                 tabIndex={0}
-                onWheel={onWheel}
+                onWheel={throttledOnWheel}
                 onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}

@@ -31,16 +31,21 @@ export const throttle = <T extends unknown[]>(func:ThrottleCallback<T>, delay:nu
     }
 };
 
-export const loadImage = (url:string) => {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(url);
-        img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
-        img.src = url;
-    });
+export const loadImage = (url: string, callback?: (img: HTMLImageElement) => void) => {
+  return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+          if (callback) {
+              callback(img);
+          }
+          resolve(img);
+      };
+      img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+      img.src = url;
+  });
 };
 
-export const preloadImages = (urls:string[]) => {
-    const imagePromises = urls.map(url => loadImage(url));
-    return Promise.all(imagePromises);
+export const preloadImages = (urls: string[], callback?: (img: HTMLImageElement) => void) => {
+  const imagePromises = urls.map(url => loadImage(url, callback));
+  return Promise.all(imagePromises);
 };

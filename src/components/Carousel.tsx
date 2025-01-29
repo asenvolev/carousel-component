@@ -1,4 +1,4 @@
-import { useRef, FC, TouchEvent, WheelEvent, KeyboardEvent, useMemo, useCallback } from "react";
+import { useRef, FC, TouchEvent, WheelEvent, KeyboardEvent } from "react";
 import styled from "styled-components";
 import { throttle } from "../utils/helpers";
 import CarouselImage, { CarouselImageRef } from './CarouselImage';
@@ -20,73 +20,125 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
     const carouselRef = useRef<HTMLDivElement | null>(null);
     const startXRef = useRef<number>(0);
     const touchStartIndexRef = useRef<number>(0);
+
     const currentIndexRef = useRef<number>(slidesToShow);
-    const imageIndexesRef = useRef<number[]>(Array.from({ length: slidesToShow*3 }, (_, index) => -slidesToShow + index)); // 3 times the slidesToShow cause we need buffer for touch events
-    const imageRefs = useRef<(CarouselImageRef | null)[]>([]);
-    const imageCache = useRef<Map<string, CacheEntry>>(new Map());
+    const currentPage = useRef<number>(0);
+    const leftBufferImageRefs = useRef<(CarouselImageRef | null)[]>([]);
+    const visibleImageRefs = useRef<(CarouselImageRef | null)[]>([]);
+    const rightBufferImageRefs = useRef<(CarouselImageRef | null)[]>([]);
+
+    const urlCache = useRef<Map<string,number>>(new Map());
+    const memoryContainer = useRef<HTMLImageElement | null>(null);
 
     const widthInPercents = 100 / slidesToShow;
     const transition = `transform ${transitionInSeconds}s ease`;
     const imageUrlsLength = imageUrls.length;
+    const slidesCount = slidesToShow * 3;
 
-    const imageOnLoad = (img: HTMLImageElement) => {
-        imageCache.current.set(img.src, { image: img, isLoaded: true });
-        if (imageCache.current.size > cacheLimit) {
-            const firstKey = imageCache.current.keys().next().value;
-            if (firstKey !== undefined) {
-                imageCache.current.delete(firstKey);
-            }
+    const imageOnLoad = (url:string) => {
+        if (urlCache.current.has(url)) {
+            urlCache.current.set(url, urlCache.current.get(url)! + 1);
+            return;
+        }
+        if (urlCache.current.size > cacheLimit) {
+            const entries = Array.from(urlCache.current.entries());
+            entries.sort((a, b) => a[1] - b[1]);
+            entries.slice(0, Math.max(0, entries.length - cacheLimit)).forEach(([key]) => {
+              urlCache.current.delete(key);
+        });
+        }
+        if (memoryContainer.current) {
+            memoryContainer.current.style.backgroundImage = Array.from(urlCache.current.values()).map(url => `url(${url})`).join(',');
         }
     };
 
     const preloadImage = (url: string): Promise<void> => {
         return new Promise((resolve) => {
-            if (imageCache.current.has(url)) {
+            if (urlCache.current.has(url)) {
+                urlCache.current.set(url, urlCache.current.get(url)! + 1);
                 resolve();
                 return;
             }
             const img = new Image();
             img.onload = () => {
-                imageOnLoad(img);
+                imageOnLoad(url);
                 resolve();
             };
             img.src = url;
         });
     };
 
-    const preloadChunkOfImages = (indexes: number[]) => {
-        indexes.map(
-            (val) => preloadImage(imageUrls[(val % imageUrlsLength + imageUrlsLength) % imageUrlsLength])
-        );
-    };
-
     const addIndexesInTheBeginningRemoveFromTheEnd = () => {
-        const indexesToAdd = Array.from({ length: slidesToShow }, (_, i) => imageIndexesRef.current[0] - (i + 1));
-        preloadChunkOfImages(indexesToAdd);
-        const indexesWithRemovedEnd = imageIndexesRef.current.slice(0, -slidesToShow);
-        return [...indexesToAdd.reverse(), ...indexesWithRemovedEnd]
+        currentPage.current -=1; 
+
+        leftBufferImageRefs.current.forEach((ref, index) => {
+            ref?.updateOrder(slidesToShow + index);
+        });
+
+        visibleImageRefs.current.forEach((ref, index) => {
+            ref?.updateOrder(slidesToShow*2 + index);
+        });
+
+        rightBufferImageRefs.current.forEach((ref, index) => {
+            ref?.updateOrder(index);
+            const val = (currentPage.current * slidesToShow) - slidesToShow + index;
+            const imgIndex =  (val % imageUrlsLength + imageUrlsLength) % imageUrlsLength;
+            const imageUrl = imageUrls[imgIndex];
+            preloadImage(imageUrl);
+            ref?.updateSrc(imageUrl);
+        });
+        
+        //rotate refs
+        [
+            leftBufferImageRefs.current,
+            visibleImageRefs.current,
+            rightBufferImageRefs.current
+        ] = [
+            rightBufferImageRefs.current,
+            leftBufferImageRefs.current,
+            visibleImageRefs.current
+        ];
+
     };
 
     const addIndexesInTheEndRemoveFromTheBeginning = () => {
-        const indexesToAdd = Array.from({ length: slidesToShow }, (_, i) => imageIndexesRef.current[imageIndexesRef.current.length - 1] + (i + 1));
-        preloadChunkOfImages(indexesToAdd);
-        const indexesWithRemovedStart = imageIndexesRef.current.slice(slidesToShow);
-        return [...indexesWithRemovedStart, ...indexesToAdd]
+        currentPage.current +=1; 
+
+        rightBufferImageRefs.current.forEach((ref, index) => {
+            ref?.updateOrder(slidesToShow + index);
+        });
+
+        visibleImageRefs.current.forEach((ref, index) => {
+            ref?.updateOrder(index);
+        });
+
+        leftBufferImageRefs.current.forEach((ref, index) => {
+            ref?.updateOrder(2*slidesToShow + index);
+            const val = (currentPage.current * slidesToShow) + slidesToShow + index;
+            const imgIndex =  (val % imageUrlsLength + imageUrlsLength) % imageUrlsLength;
+            ref?.updateSrc(imageUrls[imgIndex]);
+        });
+        
+        //rotate refs
+        [
+            leftBufferImageRefs.current,
+            visibleImageRefs.current,
+            rightBufferImageRefs.current
+        ] = [
+            visibleImageRefs.current,
+            rightBufferImageRefs.current,
+            leftBufferImageRefs.current,
+        ];
     };
 
     const addAndRemoveIndexes = () => {
-        const newImageIndexes = currentIndexRef.current < slidesToShow 
-                    ? addIndexesInTheBeginningRemoveFromTheEnd()
-                    : addIndexesInTheEndRemoveFromTheBeginning();
+        if (currentIndexRef.current < slidesToShow) {
+            addIndexesInTheBeginningRemoveFromTheEnd();
+        } else {
+            addIndexesInTheEndRemoveFromTheBeginning();
+        }
         
-        imageIndexesRef.current = newImageIndexes;
-
         currentIndexRef.current += (currentIndexRef.current < slidesToShow ? slidesToShow : -slidesToShow);
-
-        imageRefs.current.forEach((ref, index) => {
-            const newSource = imageUrls[(newImageIndexes[index] % imageUrlsLength + imageUrlsLength) % imageUrlsLength]
-            ref?.updateSrc(newSource, imageCache.current.get(newSource)?.isLoaded || false);
-        });
 
         if (carouselRef.current) {
             carouselRef.current.style.transition = "none";
@@ -146,21 +198,28 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
     };
 
     const onTransitionEnd = () => {
-        const shouldShiftIndexes = currentIndexRef.current < slidesToShow || currentIndexRef.current >=  imageIndexesRef.current.length - slidesToShow;
+        const shouldShiftIndexes = currentIndexRef.current < slidesToShow || currentIndexRef.current >=  slidesCount - slidesToShow;
         if (!startXRef.current && shouldShiftIndexes) {
             addAndRemoveIndexes();
         }
     };
 
-    const slides = imageIndexesRef.current.map((val,index) => {
+    const slides = Array.from({ length: slidesCount }, (_, index) => -slidesToShow + index).map((val,index) => {
         const imgIndex = (val % imageUrlsLength + imageUrlsLength) % imageUrlsLength;
         const imageUrl = imageUrls[imgIndex];
+        const imagesRef = index < slidesToShow 
+            ? leftBufferImageRefs 
+            : index < 2*slidesToShow 
+                ? visibleImageRefs 
+                : rightBufferImageRefs;
+        
         return (
         <CarouselImage 
-            id={imgIndex} 
-            ref={(el: CarouselImageRef | null) => (imageRefs.current[index] = el)}
+            id={index} 
+            ref={(el: CarouselImageRef | null) => (imagesRef.current[index % slidesToShow] = el)}
             key={index} 
-            initialSrc={imageUrl} 
+            initialSrc={imageUrl}
+            intialOrder={index}
             widthInPercents={widthInPercents} 
             marginInPercents={marginInPercents}
             onLoad={imageOnLoad}
@@ -183,6 +242,7 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
                 onTransitionEnd={onTransitionEnd}
             >
                 {slides}
+                <RenderLessContainer ref={memoryContainer}/>
             </CarouselContainer>
         </CarouselWrapper>
     );
@@ -205,3 +265,7 @@ const CarouselContainer = styled.div`
     align-items: center;
 `;
 
+// used to keep images in memory
+const RenderLessContainer = styled.img`
+    position:fixed;
+`;

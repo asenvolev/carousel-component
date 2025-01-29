@@ -4,13 +4,15 @@ import styled, { keyframes } from "styled-components";
 interface Props {
     id:number;
     initialSrc:string;
+    intialOrder:number;
     widthInPercents: number;
     marginInPercents: number;
-    onLoad?: (img:HTMLImageElement) => void;
+    onLoad?: (src:string) => void;
 }
 
 export interface CarouselImageRef {
-  updateSrc: (newSrc: string, isCached:boolean) => void; // Exposed method to update the src
+  updateSrc: (newSrc: string) => void;
+  updateOrder: (newOrder: number) => void;
 }
 
 const CarouselImage = forwardRef<CarouselImageRef, Props>(
@@ -18,36 +20,43 @@ const CarouselImage = forwardRef<CarouselImageRef, Props>(
 
     const [isLoaded, setIsLoaded] = useState(false);
     const imageRef = useRef<HTMLImageElement | null>(null);
+    const wrapperRef = useRef<HTMLDivElement | null>(null);
 
     const hideLoader = () => {
       setIsLoaded(true);
     };
 
     useImperativeHandle(ref, () => ({
-      updateSrc: (newSrc: string, isCached:boolean) => {
+      updateSrc: (newSrc: string) => {
         if (imageRef.current) {
-            setIsLoaded(isCached);
             imageRef.current.src = newSrc;
         }
-    },
+      },
+      updateOrder: (newOrder: number) => {
+        if (wrapperRef.current) {
+            wrapperRef.current.style.order = newOrder+'';
+        }
+      },
     }));
 
     const onLoaded = () => {
       if (imageRef.current) {
-        onLoad?.(imageRef.current);
+        onLoad?.(imageRef.current.src);
         imageRef.current.style.transition = "opacity 0.2s ease;";
         imageRef.current.style.opacity = "1";
       }
     }
 
-    const handleError = () => {
+    const handleError = () => { //retry
       imageRef.current?.setAttribute("src", `${initialSrc}?retry=${id}`);
     };
 
     return (
         <Wrapper 
+            ref={wrapperRef}
             $widthInPercents={widthInPercents}
             $marginInPercents={marginInPercents}
+            style={{order: id}}
         >
             { !isLoaded && <Loader /> }
             <Image

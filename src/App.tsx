@@ -1,6 +1,6 @@
 import { FC, useEffect, useState } from "react";
 import Carousel from './components/Carousel';
-import styled from "styled-components";
+import styled, { keyframes } from "styled-components";
 interface Image {
   id: number;
   author:  string;
@@ -35,19 +35,16 @@ const App : FC = () => {
     }
   };
 
-
-  if (!imageUrls.length) {
-    return <Loading>get images info</Loading>; // get image urls
-  }
-
   return (
     <Wrapper>
-      <Carousel 
-        imageUrls={imageUrls} 
-        slidesToShow={5} 
-        marginInPercents={2}
-        transitionInSeconds={0.3}
-      />
+      {!imageUrls.length 
+      ? <LoaderFix><Loader/></LoaderFix> 
+      :  <Carousel 
+          imageUrls={imageUrls} 
+          slidesToShow={5} 
+          marginInPercents={2}
+          transitionInSeconds={0.3}
+        />}
     </Wrapper>
   );
 }
@@ -59,13 +56,30 @@ const Wrapper = styled.div`
   height:100vh;
 `;
 
-const Loading = styled.div`
-    width: 100vw;
-    height: 100vh;
-    background-color: grey;
-    text-align: center;
-    font-size:32px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+const LoaderFix = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+`;
+
+const spin = keyframes`
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+`;
+
+export const Loader = styled.div`
+  position: absolute;
+  width:30px;
+  height:30px;
+
+  font-size: 16px;
+  font-weight: bold;
+  animation: ${spin} 1s linear infinite;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
 `;

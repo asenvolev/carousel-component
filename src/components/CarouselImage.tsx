@@ -1,10 +1,10 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
-import styled, { keyframes } from "styled-components";
+import styled from "styled-components";
+import { Loader } from "../App";
 
 interface Props {
     id:number;
     initialSrc:string;
-    intialOrder:number;
     widthInPercents: number;
     marginInPercents: number;
     onLoad?: (src:string) => void;
@@ -58,7 +58,7 @@ const CarouselImage = forwardRef<CarouselImageRef, Props>(
             $marginInPercents={marginInPercents}
             style={{order: id}}
         >
-            { !isLoaded && <Loader /> }
+            { !isLoaded && <Loader data-testid="loader" /> }
             <Image
                 ref={imageRef}
                 src={initialSrc}
@@ -98,26 +98,4 @@ const Image = styled.img`
   object-fit: contain;
   z-index:1;
   opacity: 0;
-`;
-
-const spin = keyframes`
-    0% {
-      transform: rotate(0deg);
-    }
-    100% {
-      transform: rotate(360deg);
-    }
-`;
-
-const Loader = styled.div`
-  position: absolute;
-  width:30px;
-  height:30px;
-
-  font-size: 16px;
-  font-weight: bold;
-  animation: ${spin} 1s linear infinite;
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #3498db;
-  border-radius: 50%;
 `;

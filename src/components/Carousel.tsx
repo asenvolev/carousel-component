@@ -40,15 +40,16 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
             urlCache.current.set(url, urlCache.current.get(url)! + 1);
             return;
         }
+        urlCache.current.set(url, 1);
         if (urlCache.current.size > cacheLimit) {
             const entries = Array.from(urlCache.current.entries());
             entries.sort((a, b) => a[1] - b[1]);
             entries.slice(0, Math.max(0, entries.length - cacheLimit)).forEach(([key]) => {
               urlCache.current.delete(key);
-        });
+            });
         }
         if (memoryContainer.current) {
-            memoryContainer.current.style.backgroundImage = Array.from(urlCache.current.values()).map(url => `url(${url})`).join(',');
+            memoryContainer.current.style.backgroundImage = Array.from(urlCache.current.keys()).map(url => `url(${url})`).join(',');
         }
     };
 
@@ -207,6 +208,7 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
     const slides = Array.from({ length: slidesCount }, (_, index) => -slidesToShow + index).map((val,index) => {
         const imgIndex = (val % imageUrlsLength + imageUrlsLength) % imageUrlsLength;
         const imageUrl = imageUrls[imgIndex];
+        preloadImage(imageUrl);
         const imagesRef = index < slidesToShow 
             ? leftBufferImageRefs 
             : index < 2*slidesToShow 
@@ -219,10 +221,8 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
             ref={(el: CarouselImageRef | null) => (imagesRef.current[index % slidesToShow] = el)}
             key={index} 
             initialSrc={imageUrl}
-            intialOrder={index}
             widthInPercents={widthInPercents} 
             marginInPercents={marginInPercents}
-            onLoad={imageOnLoad}
         />);
     });
 
@@ -242,7 +242,7 @@ const Carousel : FC<Props> = ({imageUrls, slidesToShow, marginInPercents=0, tran
                 onTransitionEnd={onTransitionEnd}
             >
                 {slides}
-                <RenderLessContainer ref={memoryContainer}/>
+                <RenderLessContainer ref={memoryContainer} data-testid="renderless-container" />
             </CarouselContainer>
         </CarouselWrapper>
     );
@@ -263,6 +263,13 @@ const CarouselContainer = styled.div`
     display: flex;
     flex-wrap: no-wrap;
     align-items: center;
+    &:focus {
+    outline: none;
+    }
+    &:focus-visible {
+      outline: none;
+    }
+ 
 `;
 
 // used to keep images in memory
